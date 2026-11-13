@@ -1,6 +1,6 @@
 /* Service worker for HVAC Module 5 (index.html).
    Must sit in the same folder as the page and be served over HTTPS (or from localhost). */
-var CACHE = "hvac-m5-shell-v2";
+var CACHE = "hvac-m5-shell-v3";
 var SHELL = ["./index.html", "./", "./sw.js"];
 
 self.addEventListener("install", function (event) {
