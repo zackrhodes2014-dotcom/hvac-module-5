@@ -31,6 +31,13 @@ header .sub{margin:6px 0 0;font-size:1.1rem;color:var(--accent);font-weight:600}
 header .note{margin:6px 0 0;font-size:.9rem;color:var(--muted);font-style:italic}
 .meta{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px}
 .chip{background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:4px 12px;font-size:.88rem;color:var(--muted)}
+.profile-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-top:12px}
+.profile-toggle{display:inline-flex;padding:3px;border:1px solid var(--border);border-radius:999px;background:var(--panel2);gap:2px}
+.profile-toggle button{appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--muted);font:inherit;font-size:.82rem;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;line-height:1.2;min-height:32px;margin:0}
+.profile-toggle button[aria-pressed="true"]{background:var(--accent);color:#05211e;font-weight:700}
+.review-tag{display:none;font-size:.75rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#05211e;background:var(--accent);border-radius:999px;padding:4px 10px}
+.review-tag.on{display:inline-flex;align-items:center}
+.profile-bar #resetProfile{font-size:.82rem;font-weight:700;padding:5px 12px;border-radius:999px;min-height:32px;margin:0}
 nav.toc{max-width:760px;margin:0 auto;padding:0 14px}
 nav.toc details{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:4px 14px}
 nav.toc summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
@@ -220,9 +227,19 @@ td.ok{color:var(--accent)} td.no{color:var(--hot)}
   <p class="sub">Gases</p>
   <p class="note">(topics follow Chapter 5 of Modern Refrigeration and Air Conditioning, 21st/22nd ed.)</p>
   <div class="meta">
-    <span class="chip">👤 Learner: Ian</span>
+    <span class="chip" id="learnerChip">👤 Learner: Ian</span>
     <span class="chip">📶 Level: Beginner</span>
     <span class="chip">⏱️ About 50 min + ride-along practice</span>
+  </div>
+
+  <div class="profile-bar">
+    <div class="profile-toggle" id="profileToggle" role="radiogroup" aria-label="User profile">
+      <button type="button" role="radio" data-profile="ian" aria-checked="true" aria-pressed="true">Ian</button>
+      <button type="button" role="radio" data-profile="landon" aria-checked="false" aria-pressed="false">Landon</button>
+      <button type="button" role="radio" data-profile="admin" aria-checked="false" aria-pressed="false">Admin</button>
+    </div>
+    <span class="review-tag" id="reviewTag">Review mode</span>
+    <button type="button" class="secondary danger" id="resetProfile" hidden>↺ Reset this profile</button>
   </div>
 </header>
 
@@ -510,10 +527,56 @@ var CFG={"prefix": "hvac5:", "sections": ["s1", "s2", "s3", "s4", "s5", "s6"], "
 var H=(function(){
   "use strict";
   var PFX=CFG.prefix;
+  var PROFILE_KEY="hvacTraining:activeProfile";
+  var PROFILE_IDS=["ian","landon","admin"];
+  var PROFILE_LABELS={ian:"Ian",landon:"Landon",admin:"Admin"};
+  var MIGRATE_FLAG=PFX+"migrated:profiles:v1";
+  function validProfile(id){return PROFILE_IDS.indexOf(id)>=0?id:"ian";}
+  function readActiveProfile(){
+    try{return validProfile(localStorage.getItem(PROFILE_KEY)||"ian");}catch(e){return "ian";}
+  }
+  var activeProfile=readActiveProfile();
+  function writeActiveProfile(id){
+    activeProfile=validProfile(id);
+    try{localStorage.setItem(PROFILE_KEY,activeProfile);}catch(e){}
+  }
+  function migrateUnprofiledToIan(){
+    try{
+      if(localStorage.getItem(MIGRATE_FLAG)==="1") return;
+      var i,k,keys=[];
+      for(i=0;i<localStorage.length;i++){
+        k=localStorage.key(i);
+        if(!k||k.indexOf(PFX)!==0) continue;
+        if(k===MIGRATE_FLAG) continue;
+        if(/:profile:(ian|landon|admin)$/.test(k)) continue;
+        keys.push(k);
+      }
+      keys.forEach(function(oldK){
+        var dest=oldK+":profile:ian";
+        if(localStorage.getItem(dest)==null){
+          var val=localStorage.getItem(oldK);
+          if(val!=null) localStorage.setItem(dest,val);
+        }
+      });
+      localStorage.setItem(MIGRATE_FLAG,"1");
+    }catch(e){}
+  }
+  migrateUnprofiledToIan();
+  function profiledKey(k){return PFX+k+":profile:"+activeProfile;}
   var store={
-    get:function(k){try{return localStorage.getItem(PFX+k);}catch(e){return null;}},
-    set:function(k,v){try{localStorage.setItem(PFX+k,v);return true;}catch(e){return false;}},
-    del:function(k){try{localStorage.removeItem(PFX+k);}catch(e){}}
+    get:function(k){try{return localStorage.getItem(profiledKey(k));}catch(e){return null;}},
+    set:function(k,v){try{localStorage.setItem(profiledKey(k),v);return true;}catch(e){return false;}},
+    del:function(k){try{localStorage.removeItem(profiledKey(k));}catch(e){}},
+    clearActive:function(){
+      var suffix=":profile:"+activeProfile, drop=[], i,k;
+      try{
+        for(i=0;i<localStorage.length;i++){
+          k=localStorage.key(i);
+          if(k && k.indexOf(PFX)===0 && k.slice(-suffix.length)===suffix) drop.push(k);
+        }
+        drop.forEach(function(k){localStorage.removeItem(k);});
+      }catch(e){}
+    }
   };
   function $(id){return document.getElementById(id);}
   function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
@@ -767,6 +830,115 @@ var H=(function(){
   });
   if(!canSave){ $("storageNote").textContent="⚠️ This browser isn't allowing saved data (private mode?), so progress won't be remembered."; }
 
+
+  /* ---------- Profiles (Ian / Landon / Admin) ---------- */
+  var profileListeners=[];
+  function onProfileChange(fn){ if(typeof fn==="function") profileListeners.push(fn); }
+  function syncPredictions(){
+    each(document.querySelectorAll(".predict"),function(box){
+      var id=box.getAttribute("data-id");
+      var ta=box.querySelector("textarea"), btn=box.querySelector(".reveal");
+      var ans=box.querySelector(".answer"), yours=box.querySelector(".yours");
+      if(!ta) return;
+      var saved=store.get("pred:"+id);
+      ta.value=saved||"";
+      if(ans) ans.classList.remove("show");
+      if(yours) yours.classList.remove("show");
+      if(btn){
+        btn.textContent=btn.getAttribute("data-label")||"Reveal answer";
+        btn.setAttribute("aria-expanded","false");
+      }
+    });
+  }
+  function syncPersistFields(){
+    each(document.querySelectorAll(".persist"),function(inp){
+      var v=store.get("f:"+inp.id);
+      inp.value=v||"";
+    });
+    if(typeof syncPersistedInputs==="function") syncPersistedInputs();
+  }
+  function applyCardsFromP(){
+    if(typeof cards==="undefined") return;
+    cards.forEach(function(c,i){
+      if(c.card) c.card.classList.add("no-anim");
+      c.setFlipped(!!(P.flipped && P.flipped[i]), false);
+      c.paint();
+    });
+    requestAnimationFrame(function(){requestAnimationFrame(function(){
+      each(document.querySelectorAll(".card.no-anim"),function(c){c.classList.remove("no-anim");});
+    });});
+  }
+  function updateResumeBtn(){
+    if(typeof resumeBtn==="undefined"||!resumeBtn) return;
+    savedLast=P.last;
+    if(savedLast && savedLast!=="objectives" && $(savedLast)){
+      resumeBtn.textContent="▶ Resume where you left off: "+sectionTitle(savedLast);
+      resumeBtn.hidden=false;
+    } else {
+      resumeBtn.hidden=true;
+    }
+  }
+  function updateProfileUI(){
+    var bar=$("profileToggle");
+    if(bar){
+      each(bar.querySelectorAll("[data-profile]"),function(b){
+        var on=b.getAttribute("data-profile")===activeProfile;
+        b.setAttribute("aria-pressed",String(on));
+        b.setAttribute("aria-checked",String(on));
+      });
+    }
+    var tag=$("reviewTag");
+    if(tag) tag.classList.toggle("on", activeProfile==="admin");
+    var rp=$("resetProfile");
+    if(rp) rp.hidden=activeProfile!=="admin";
+    document.body.classList.toggle("is-admin", activeProfile==="admin");
+    var lc=$("learnerChip");
+    if(lc){
+      lc.textContent=activeProfile==="admin"?"👤 Reviewer: Admin":("👤 Learner: "+PROFILE_LABELS[activeProfile]);
+    }
+    var note=$("storageNote");
+    if(note && canSave){
+      note.textContent="Progress is saved on this device for "+PROFILE_LABELS[activeProfile]+" only. Switching profiles never mixes scores.";
+    }
+  }
+  function applyProfileState(){
+    P=loadP();
+    applyCardsFromP();
+    if(typeof updateCount==="function") updateCount();
+    if(typeof updateScore==="function") updateScore();
+    if(typeof paintItems==="function") paintItems();
+    else if(typeof paintSections==="function") paintSections();
+    syncPredictions();
+    syncPersistFields();
+    updateResumeBtn();
+    updateProfileUI();
+    profileListeners.forEach(function(fn){ try{fn();}catch(e){} });
+  }
+  function switchProfile(id){
+    id=validProfile(id);
+    if(id===activeProfile) return;
+    writeActiveProfile(id);
+    applyProfileState();
+  }
+  var profileBar=$("profileToggle");
+  if(profileBar){
+    each(profileBar.querySelectorAll("[data-profile]"),function(b){
+      b.addEventListener("click",function(){ switchProfile(b.getAttribute("data-profile")); });
+    });
+  }
+  var resetProfBtn=$("resetProfile");
+  if(resetProfBtn){
+    resetProfBtn.addEventListener("click",function(){
+      if(!window.confirm("Reset the "+PROFILE_LABELS[activeProfile]+" profile? This clears quiz scores, sections, predictions, and all saved entries for this profile only. Other profiles are not changed.")) return;
+      store.clearActive();
+      P=defaults();
+      saveP();
+      applyProfileState();
+    });
+  }
+  updateProfileUI();
+
+
   /* ---------- PWA: manifest, service worker, install prompt ---------- */
   var secure=location.protocol==="https:"||(location.protocol==="http:"&&/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname));
   var webish=/^https?:$/.test(location.protocol);
@@ -832,10 +1004,19 @@ var H=(function(){
   $("iosClose").addEventListener("click",function(){hide(iosHint,"dismiss:ios:v1");});
 
   /* helpers for module widgets */
+  var persistedInputs=[];
   function persistInput(inp,key){
+    if(!inp) return;
+    persistedInputs.push({inp:inp,key:key});
     var v=store.get("f:"+key); if(v!=null&&v!=="") inp.value=v;
     inp.addEventListener("input",function(){store.set("f:"+key,inp.value);});
     inp.addEventListener("change",function(){store.set("f:"+key,inp.value);});
+  }
+  function syncPersistedInputs(){
+    persistedInputs.forEach(function(p){
+      var v=store.get("f:"+p.key);
+      p.inp.value=(v!=null)?v:"";
+    });
   }
   function chipGroup(container,onPick){
     var btns=container.querySelectorAll("button");
@@ -843,7 +1024,7 @@ var H=(function(){
     each(btns,function(b){b.type="button";b.setAttribute("aria-pressed","false");b.addEventListener("click",function(){pick(b);});});
     return {pick:function(v){each(btns,function(b){if(b.getAttribute("data-v")===v)pick(b);});}};
   }
-  return {store:store,$:$,el:el,each:each,num:num,fmt:fmt,reduceMotion:reduceMotion,persistInput:persistInput,chipGroup:chipGroup};
+  return {store:store,$:$,el:el,each:each,num:num,fmt:fmt,reduceMotion:reduceMotion,persistInput:persistInput,chipGroup:chipGroup,onProfileChange:onProfileChange,syncPersistedInputs:syncPersistedInputs};
 })();
 
 /* ===== Module 5 widgets ===== */
@@ -1193,7 +1374,31 @@ var H=(function(){
   });
   $("logClear").addEventListener("click",function(){if(!logs.length||!window.confirm("Clear all logbook entries?"))return;logs=[];store.set("log","[]");logDraw();});
   logDraw(); logErr();
+
+  function rehydrateM5(){
+    try{glState=JSON.parse(store.get("gl")||"{}")||{};}catch(e){glState={};}
+    var savedLaw=store.get("glLaw");
+    law=(savedLaw&&LAWS[savedLaw])?savedLaw:"gay";
+    if(glM) glM.checked=false;
+    buildFields();
+    var shSaved={}; try{shSaved=JSON.parse(store.get("sh")||"{}")||{};}catch(e){shSaved={};}
+    if(shSaved.r&&PT[shSaved.r]){
+      ref=shSaved.r; setRange();
+      shPn.value=shSaved.p; shP.value=shSaved.p;
+      shTn.value=shSaved.t; shT.value=shSaved.t;
+    } else {
+      ref="R-410A"; setRange();
+      shPn.value=118; shP.value=118;
+      if(shT.defaultValue){ shT.value=shT.defaultValue; shTn.value=shT.defaultValue; }
+    }
+    refChips.pick(ref);
+    sh();
+    try{logs=JSON.parse(store.get("log")||"[]")||[];}catch(e){logs=[];}
+    logDraw(); logErr();
+  }
+  if(H.onProfileChange) H.onProfileChange(rehydrateM5);
 })();
+
 
 </script>
 </body>
